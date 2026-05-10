@@ -1,0 +1,96 @@
+name: Claude Code Review (reusable)
+
+# Reusable workflow that runs the Claude PR reviewer aligned with the
+# merge rule in https://github.com/LucasSantana-Dev/.claude/standards/workflow.md.
+# Consumer repos call this via:
+#   jobs:
+#     review:
+#       uses: LucasSantana-Dev/.github/.github/workflows/claude-review.yml@v1
+#       secrets:
+#         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: 'Anthropic model id. Default sonnet.'
+        type: string
+        required: false
+        default: 'claude-sonnet-4-6'
+      max_turns:
+        description: 'Max action turns. Default 3 (one review pass + tool use).'
+        type: number
+        required: false
+        default: 3
+      timeout_minutes:
+        description: 'Job timeout in minutes.'
+        type: number
+        required: false
+        default: 10
+      prompt_override:
+        description: |
+          Optional repo-specific prompt addendum. The base prompt enforces
+          the merge rule; if provided, this string is appended after the
+          base instructions.
+        type: string
+        required: false
+        default: ''
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude PR review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: ${{ inputs.model }}
+          max_turns: ${{ inputs.max_turns }}
+          direct_prompt: |
+            You are reviewing a pull request against `${{ github.event.pull_request.base.ref }}`.
+
+            **What to flag (substantive only):**
+            - Correctness bugs (logic errors, dead code paths, broken control flow)
+            - Security risks (auth bypass, injection, leaked secrets, unsafe deserialization)
+            - Semver hazards (peer-dep mismatches, range lag against companion packages)
+            - Production-risk version picks (non-LTS images on release branches, freshly-cut "Current" lines)
+            - Test gaps that would let real regressions slip through (NOT coverage % targets)
+            - Race conditions, retry logic that doesn't fire, error handlers that swallow real failures
+
+            **What to SKIP:**
+            - Style preferences (formatting, naming, ordering)
+            - "Could be more idiomatic" suggestions
+            - Documentation completeness unless the docs are actively misleading
+            - Minor / Nitpick / Optional / Quick-win observations
+            - Anything you would tag with 💤 Low value
+
+            **Format:**
+            - If you find one or more substantive issues, post inline review comments
+              with file:line references and concrete fix suggestions.
+            - If everything looks correct, post ONE top-level comment saying
+              "Claude review: no substantive concerns" and approve.
+            - Use the GitHub PR review API; do not push commits.
+
+            Read `.claude/standards/workflow.md` "Merge rule" section in the checked-out
+            tree (if present) for repo-specific guidance.
+
+            ${{ inputs.prompt_override }}
