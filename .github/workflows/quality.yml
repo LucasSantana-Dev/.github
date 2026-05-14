@@ -1,0 +1,172 @@
+# Org-wide reusable quality + security workflow.
+#
+# Callers pin a ref and pass inputs:
+#
+#     jobs:
+#       quality:
+#         uses: LucasSantana-Dev/.github/.github/workflows/quality.yml@main
+#         with:
+#           node-version: "22"
+#           has-dockerfile: true
+#           run-deadcode: true
+#           package-manager: npm
+#         permissions:
+#           contents: read
+#           security-events: write
+#           actions: read
+#
+# Free-tier tools only. Bring your own GH App installs for SonarCloud /
+# GitGuardian / Snyk / Socket / CodeRabbit / Dependabot — those configure
+# in the GitHub UI, not in this workflow.
+name: quality
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node major version for lint + deadcode jobs."
+        required: false
+        type: string
+        default: "22"
+      has-dockerfile:
+        description: "Run hadolint against Dockerfile* in repo root + deploy/."
+        required: false
+        type: boolean
+        default: false
+      run-deadcode:
+        description: "Run knip (TS dead-code detection). Repo must declare it in devDependencies."
+        required: false
+        type: boolean
+        default: false
+      package-manager:
+        description: "npm | pnpm | yarn. Used by lint + deadcode jobs."
+        required: false
+        type: string
+        default: "npm"
+      lint-script:
+        description: "Repo npm script for lint. Empty string skips."
+        required: false
+        type: string
+        default: "lint"
+      paths-ignore:
+        description: "Semgrep / trivy paths to skip (newline-separated)."
+        required: false
+        type: string
+        default: |
+          .worktrees/**
+          worktrees/**
+          .wt-specs/**
+          archive/**
+          node_modules/**
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  semgrep:
+    name: SAST (semgrep)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep ci --config=p/default --config=p/security-audit --config=p/owasp-top-ten --sarif --output=semgrep.sarif || true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  codeql:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["javascript-typescript"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  trivy:
+    name: Vuln + IaC (trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+  actionlint:
+    name: Workflow lint (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          bash <(curl -sS https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  hadolint:
+    name: Dockerfile lint (hadolint)
+    if: ${{ inputs.has-dockerfile }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find Dockerfiles
+        id: find
+        run: |
+          files=$(find . -maxdepth 4 \( -name 'Dockerfile' -o -name 'Dockerfile.*' \) \
+            -not -path './node_modules/*' -not -path './.worktrees/*' -not -path './worktrees/*' \
+            -not -path './.wt-specs/*' -not -path './archive/*' | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+      - uses: hadolint/hadolint-action@v3.1.0
+        if: steps.find.outputs.files != ''
+        with:
+          dockerfile: ${{ steps.find.outputs.files }}
+          ignore: DL3008,DL3009,DL3015
+          failure-threshold: warning
+
+  lint:
+    name: Lint (${{ inputs.lint-script }})
+    if: ${{ inputs.lint-script != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - run: ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund || ${{ inputs.package-manager }} install --frozen-lockfile
+      - run: ${{ inputs.package-manager }} run ${{ inputs.lint-script }}
+
+  deadcode:
+    name: Dead code (knip)
+    if: ${{ inputs.run-deadcode }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - run: ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund || ${{ inputs.package-manager }} install --frozen-lockfile
+      - run: npx --yes knip --reporter=compact
