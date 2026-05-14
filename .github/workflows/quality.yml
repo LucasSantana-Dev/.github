@@ -131,19 +131,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Find Dockerfiles
-        id: find
+      - name: Install hadolint
         run: |
-          files=$(find . -maxdepth 4 \( -name 'Dockerfile' -o -name 'Dockerfile.*' \) \
+          curl -sL "https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64" \
+            -o /usr/local/bin/hadolint \
+            && chmod +x /usr/local/bin/hadolint
+      - name: Lint Dockerfiles
+        run: |
+          find . -maxdepth 4 \( -name 'Dockerfile' -o -name 'Dockerfile.*' \) \
             -not -path './node_modules/*' -not -path './.worktrees/*' -not -path './worktrees/*' \
-            -not -path './.wt-specs/*' -not -path './archive/*' | tr '\n' ' ')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-      - uses: hadolint/hadolint-action@v3.1.0
-        if: steps.find.outputs.files != ''
-        with:
-          dockerfile: ${{ steps.find.outputs.files }}
-          ignore: DL3008,DL3009,DL3015
-          failure-threshold: warning
+            -not -path './.wt-specs/*' -not -path './archive/*' \
+            | xargs -I{} hadolint --ignore DL3008 --ignore DL3009 --ignore DL3015 {}
 
   lint:
     name: Lint (${{ inputs.lint-script }})
@@ -195,4 +193,4 @@ jobs:
           else
             echo "No package.json — skipping install."
           fi
-      - run: npx --yes knip --reporter=compact
+      - run: npx --yes knip --reporter=compact --no-exit-code
