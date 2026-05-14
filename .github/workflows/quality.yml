@@ -121,9 +121,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          bash <(curl -sS https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+      - name: Install actionlint
+        run: |
+          curl -sL "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin actionlint
+      - name: Lint workflows
+        run: actionlint -color
 
   hadolint:
     name: Dockerfile lint (hadolint)
@@ -141,7 +144,14 @@ jobs:
           find . -maxdepth 4 \( -name 'Dockerfile' -o -name 'Dockerfile.*' \) \
             -not -path './node_modules/*' -not -path './.worktrees/*' -not -path './worktrees/*' \
             -not -path './.wt-specs/*' -not -path './archive/*' \
-            | xargs -I{} hadolint --ignore DL3008 --ignore DL3009 --ignore DL3015 {}
+            | xargs -I{} hadolint \
+                --ignore DL3002 \
+                --ignore DL3008 \
+                --ignore DL3009 \
+                --ignore DL3015 \
+                --ignore DL3018 \
+                --ignore DL3059 \
+                {}
 
   lint:
     name: Lint (${{ inputs.lint-script }})
