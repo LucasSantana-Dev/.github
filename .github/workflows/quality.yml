@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -151,11 +151,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Detect lockfile (npm cache only works when one exists)
+        id: lockfile
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
-      - run: ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund || ${{ inputs.package-manager }} install --frozen-lockfile
+          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
+      - run: |
+          if [ -f package.json ]; then
+            ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+          else
+            echo "No package.json — skipping install."
+          fi
       - run: ${{ inputs.package-manager }} run ${{ inputs.lint-script }}
 
   deadcode:
@@ -164,9 +177,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Detect lockfile (npm cache only works when one exists)
+        id: lockfile
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
-      - run: ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund || ${{ inputs.package-manager }} install --frozen-lockfile
+          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
+      - run: |
+          if [ -f package.json ]; then
+            ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+          else
+            echo "No package.json — skipping install."
+          fi
       - run: npx --yes knip --reporter=compact
