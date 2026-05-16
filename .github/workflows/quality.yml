@@ -171,7 +171,16 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
-      - run: |
+      - name: Install dependencies
+        # Authenticate postinstall scripts that hit the GitHub REST API
+        # (e.g. youtube-dl-exec fetches the yt-dlp binary release manifest)
+        # so shared-runner IPs don't hit the 60 req/hr unauthenticated cap.
+        # YOUTUBE_DL_SKIP_DOWNLOAD short-circuits the fetch entirely since
+        # lint + deadcode don't need the binary.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
+        run: |
           if [ -f package.json ]; then
             ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
           else
@@ -197,7 +206,16 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
-      - run: |
+      - name: Install dependencies
+        # Authenticate postinstall scripts that hit the GitHub REST API
+        # (e.g. youtube-dl-exec fetches the yt-dlp binary release manifest)
+        # so shared-runner IPs don't hit the 60 req/hr unauthenticated cap.
+        # YOUTUBE_DL_SKIP_DOWNLOAD short-circuits the fetch entirely since
+        # lint + deadcode don't need the binary.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
+        run: |
           if [ -f package.json ]; then
             ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
           else
