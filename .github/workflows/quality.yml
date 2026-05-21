@@ -40,7 +40,7 @@ on:
         type: boolean
         default: false
       run-osv-scanner:
-        description: "Run google/osv-scanner-action for transitive CVE alerts against lockfiles. Replaces Snyk's pre-merge dep-CVE gate per docs/ci-tools-standard.md."
+        description: "Run google/osv-scanner-action for transitive CVE alerts against lockfiles. Fail-soft — emits findings to the Security tab via SARIF without blocking merge. Per-repo: promote to a required check after 1 week of clean signal. Replaces Snyk's dep-CVE scanning role per docs/ci-tools-standard.md."
         required: false
         type: boolean
         default: true

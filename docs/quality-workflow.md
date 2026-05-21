@@ -53,7 +53,7 @@ jobs:
       node-version: "22"
       has-dockerfile: true        # set false for repos without Dockerfiles
       run-deadcode: true          # opt-in: requires knip configured in repo
-      run-osv-scanner: true       # default; disable for repos without lockfiles
+      run-osv-scanner: true       # required by org standard; only disable if repo has no lockfiles to scan
       package-manager: npm        # or pnpm / yarn
       lint-script: lint           # whatever `npm run X` does ESLint+Prettier
 ```
