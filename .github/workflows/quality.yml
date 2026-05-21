@@ -15,9 +15,10 @@
 #           security-events: write
 #           actions: read
 #
-# Free-tier tools only. Bring your own GH App installs for SonarCloud /
-# GitGuardian / Snyk / Socket / CodeRabbit / Dependabot — those configure
-# in the GitHub UI, not in this workflow.
+# Free-tier tools only. See docs/ci-tools-standard.md for the policy.
+# GH App installs that the policy approves: SonarCloud, GitGuardian, Socket,
+# Dependabot. PR-Agent (Codium-ai action, Anthropic-backed) handles AI review.
+# Snyk + Greptile + CodeRabbit are NOT recommended (plan-limited; see ADR).
 name: quality
 
 on:
@@ -38,6 +39,11 @@ on:
         required: false
         type: boolean
         default: false
+      run-osv-scanner:
+        description: "Run google/osv-scanner-action for transitive CVE alerts against lockfiles. Fail-soft — emits findings to the Security tab via SARIF without blocking merge. Per-repo: promote to a required check after 1 week of clean signal. Replaces Snyk's dep-CVE scanning role per docs/ci-tools-standard.md."
+        required: false
+        type: boolean
+        default: true
       package-manager:
         description: "npm | pnpm | yarn. Used by lint + deadcode jobs."
         required: false
@@ -115,6 +121,31 @@ jobs:
         with:
           sarif_file: trivy.sarif
           category: trivy
+
+  osv-scanner:
+    name: Dep CVE (osv-scanner)
+    if: ${{ inputs.run-osv-scanner }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run osv-scanner
+        uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638  # v1.9.2
+        with:
+          # Scan lockfiles + sboms in the repo. Fail-soft: emit findings to
+          # Security tab via SARIF, don't block merge on noise. Promote to
+          # blocking per-repo after 1 week of clean signal (see ADR).
+          scan-args: |-
+            --recursive
+            --skip-git
+            --format=sarif
+            --output=osv.sarif
+            ./
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner
 
   actionlint:
     name: Workflow lint (actionlint)
