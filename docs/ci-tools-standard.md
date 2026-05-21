@@ -4,6 +4,8 @@ Org-wide policy on which CI / code-review / security-scan tools every repo shoul
 
 This standard is the result of one decision recorded in detail in the Lucky repo: [`docs/decisions/2026-05-21-replace-plan-limited-review-tools.md`](https://github.com/LucasSantana-Dev/Lucky/blob/main/docs/decisions/2026-05-21-replace-plan-limited-review-tools.md). Read that ADR for the full rationale (cost numbers, alternatives considered, revisit triggers). This file is the org-wide policy that follows from it.
 
+For the branch model that pairs with this tooling, see [`branch-strategy.md`](./branch-strategy.md).
+
 ## TL;DR
 
 | Layer | Tool | Status |

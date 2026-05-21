@@ -40,7 +40,7 @@ name: quality
 on:
   pull_request:
   push:
-    branches: [main, "release/**"]
+    branches: [main, release]
 
 jobs:
   call:
@@ -60,7 +60,7 @@ jobs:
 
 ## Required GH branch ruleset gates
 
-Pin these context names in each repo's main-branch ruleset (`required_status_checks`):
+Pin these context names in each repo's `main` AND `release` branch rulesets (`required_status_checks`). See [`branch-strategy.md`](./branch-strategy.md) for the branch model.
 
 - `call / SAST (semgrep)`
 - `call / SAST (CodeQL)`
