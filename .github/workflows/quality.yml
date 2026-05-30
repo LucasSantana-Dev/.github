@@ -45,7 +45,7 @@ on:
         type: boolean
         default: true
       package-manager:
-        description: "npm | pnpm | yarn. Used by lint + deadcode jobs."
+        description: "npm | pnpm | yarn | bun. Used by lint + deadcode jobs."
         required: false
         type: string
         default: "npm"
@@ -157,7 +157,10 @@ jobs:
           curl -sL "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz" \
             | tar xz -C /usr/local/bin actionlint
       - name: Lint workflows
-        run: actionlint -color -ignore 'SC2016:'
+        # Tolerate unknown runner labels so repos on self-hosted runners
+        # (e.g. Blacksmith) pass on legit labels actionlint can't resolve.
+        # Real errors (bad syntax, undefined refs) still fail the job.
+        run: actionlint -color -ignore 'SC2016:' -ignore 'label ".+" is unknown'
 
   hadolint:
     name: Dockerfile lint (hadolint)
@@ -193,7 +196,7 @@ jobs:
       - name: Detect lockfile (npm cache only works when one exists)
         id: lockfile
         run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ]; then
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ] || [ -f bun.lockb ] || [ -f bun.lock ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -201,7 +204,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
+          # setup-node cache supports npm|yarn|pnpm only — never pass 'bun'.
+          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager != 'bun' && inputs.package-manager || '' }}
+      - name: Set up bun
+        if: ${{ inputs.package-manager == 'bun' }}
+        uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         # Authenticate postinstall scripts that hit the GitHub REST API
         # (e.g. youtube-dl-exec fetches the yt-dlp binary release manifest)
@@ -213,7 +220,11 @@ jobs:
           YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
         run: |
           if [ -f package.json ]; then
-            ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+            if [ "${{ inputs.package-manager }}" = "bun" ]; then
+              bun install --frozen-lockfile || bun install
+            else
+              ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+            fi
           else
             echo "No package.json — skipping install."
           fi
@@ -228,7 +239,7 @@ jobs:
       - name: Detect lockfile (npm cache only works when one exists)
         id: lockfile
         run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ]; then
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ] || [ -f yarn.lock ] || [ -f pnpm-lock.yaml ] || [ -f bun.lockb ] || [ -f bun.lock ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -236,7 +247,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager || '' }}
+          # setup-node cache supports npm|yarn|pnpm only — never pass 'bun'.
+          cache: ${{ steps.lockfile.outputs.present == 'true' && inputs.package-manager != 'bun' && inputs.package-manager || '' }}
+      - name: Set up bun
+        if: ${{ inputs.package-manager == 'bun' }}
+        uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         # Authenticate postinstall scripts that hit the GitHub REST API
         # (e.g. youtube-dl-exec fetches the yt-dlp binary release manifest)
@@ -248,7 +263,11 @@ jobs:
           YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
         run: |
           if [ -f package.json ]; then
-            ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+            if [ "${{ inputs.package-manager }}" = "bun" ]; then
+              bun install --frozen-lockfile || bun install
+            else
+              ${{ inputs.package-manager }} install --no-audit --no-fund || ${{ inputs.package-manager }} ci --legacy-peer-deps --no-audit --no-fund
+            fi
           else
             echo "No package.json — skipping install."
           fi
