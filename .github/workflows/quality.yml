@@ -54,6 +54,11 @@ on:
         required: false
         type: string
         default: "lint"
+      pre-lint-script:
+        description: "Optional shell command to run before linting (e.g. generate Prisma client, build type info). Empty string skips."
+        required: false
+        type: string
+        default: ""
       paths-ignore:
         description: "Semgrep / trivy paths to skip (newline-separated)."
         required: false
@@ -228,6 +233,9 @@ jobs:
           else
             echo "No package.json — skipping install."
           fi
+      - name: Pre-lint build (type info)
+        if: ${{ inputs.pre-lint-script != '' }}
+        run: ${{ inputs.pre-lint-script }}
       - run: ${{ inputs.package-manager }} run ${{ inputs.lint-script }}
 
   deadcode:
