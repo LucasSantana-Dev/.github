@@ -63,9 +63,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: ${{ inputs.model }}
-          max_turns: ${{ inputs.max_turns }}
-          direct_prompt: |
+          # claude-code-action@v1 dropped the `model` / `max_turns` inputs and
+          # renamed `direct_prompt` → `prompt`; model/turns now fold into
+          # `claude_args` (passed through to the Claude CLI). The old inputs were
+          # silently ignored, so the configured model/turns never applied.
+          claude_args: --model ${{ inputs.model }} --max-turns ${{ inputs.max_turns }}
+          prompt: |
             You are reviewing a pull request against `${{ github.event.pull_request.base.ref }}`.
 
             **What to flag (substantive only):**
