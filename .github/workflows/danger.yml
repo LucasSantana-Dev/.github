@@ -14,16 +14,19 @@ name: Danger (reusable)
 on:
   workflow_call:
     inputs:
+      # TODO(2026-07-01): pin node to 20 until danger@14+ guarantees Node 24 stability.
+      # Upgraded danger@^13 for WHATWG fetch (undici) support (danger@12 used node-fetch v2,
+      # which fails on Node 24). Remove node pin after danger v14 stable in wild (≥2 weeks).
       node_version:
         description: 'Node version for Danger runtime.'
         type: string
         required: false
-        default: '22'
+        default: '20'
       danger_version:
         description: 'Pinned danger-js version. Bumped centrally; consumers re-run CI to pick up.'
         type: string
         required: false
-        default: '^12'
+        default: '^13'
       fail_on_errors:
         description: 'Pass --failOnErrors to danger ci. Default true.'
         type: boolean
