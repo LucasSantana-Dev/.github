@@ -1,0 +1,179 @@
+name: Kimi Code Review (reusable)
+
+# Reusable workflow that runs a Kimi (Moonshot) PR reviewer. Drop-in sibling of
+# claude-review.yml for repos where the Anthropic gate is dark or Kimi is the
+# preferred provider. Consumer repos call this via:
+#   jobs:
+#     review:
+#       uses: LucasSantana-Dev/.github/.github/workflows/kimi-review.yml@v1
+#       secrets:
+#         KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+#
+# Requires a Moonshot platform API key (https://platform.moonshot.ai) stored as
+# the KIMI_API_KEY repo secret. The Kimi Code managed-service OAuth token is
+# interactive-only and CANNOT be used in CI.
+#
+# Output contract (v1): ONE structured PR comment per run (updated in place on
+# re-runs via the <!-- kimi-review --> marker). Inline file:line comments are a
+# possible v2 refinement; the single-comment contract was chosen so the job is
+# pure bash+curl with no custom action to maintain.
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: 'Moonshot model id. Default kimi-k2.6.'
+        type: string
+        required: false
+        default: 'kimi-k2.6'
+      max_diff_kb:
+        description: 'Diff is truncated beyond this size (KB), with a note.'
+        type: number
+        required: false
+        default: 300
+      timeout_minutes:
+        description: 'Job timeout in minutes.'
+        type: number
+        required: false
+        default: 10
+      prompt_override:
+        description: 'Optional repo-specific prompt addendum, appended to the base instructions.'
+        type: string
+        required: false
+        default: ''
+    secrets:
+      KIMI_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: kimi-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+      MODEL: ${{ inputs.model }}
+      MAX_DIFF_KB: ${{ inputs.max_diff_kb }}
+      PROMPT_OVERRIDE: ${{ inputs.prompt_override }}
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard secret
+        run: |
+          if [ -z "$KIMI_API_KEY" ]; then
+            echo "::error::KIMI_API_KEY secret is empty. Create a key at https://platform.moonshot.ai and set it on the repo."
+            exit 1
+          fi
+
+      - name: Build diff
+        id: diff
+        run: |
+          git fetch -q origin "${{ github.event.pull_request.base.ref }}"
+          git diff "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- . ':(exclude)package-lock.json' ':(exclude)*.lock' > /tmp/pr.diff || true
+          SIZE=$(wc -c < /tmp/pr.diff)
+          MAX=$((MAX_DIFF_KB * 1024))
+          if [ "$SIZE" -gt "$MAX" ]; then
+            head -c "$MAX" /tmp/pr.diff > /tmp/pr.diff.truncated
+            mv /tmp/pr.diff.truncated /tmp/pr.diff
+            echo "truncated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "truncated=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ ! -s /tmp/pr.diff ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Kimi review
+        if: steps.diff.outputs.empty == 'false'
+        id: review
+        env:
+          TRUNCATED: ${{ steps.diff.outputs.truncated }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, sys, urllib.request
+
+          diff = open("/tmp/pr.diff", errors="replace").read()
+          truncated = os.environ.get("TRUNCATED") == "true"
+          prompt = f"""You are reviewing a pull request diff against `${{ github.event.pull_request.base.ref }}`.
+
+          Flag ONLY substantive issues:
+          - Correctness bugs (logic errors, dead code paths, broken control flow)
+          - Security risks (auth bypass, injection, leaked secrets, unsafe deserialization)
+          - Semver hazards (peer-dep mismatches, range lag against companion packages)
+          - Test gaps that would let real regressions slip through (NOT coverage % targets)
+          - Race conditions, retry logic that doesn't fire, error handlers that swallow real failures
+
+          SKIP: style/formatting/naming, "could be more idiomatic", docs completeness,
+          minor/nitpick/optional observations.
+
+          Respond in this exact format:
+          VERDICT: ISSUES | CLEAN
+          Then, for each issue (max 5):
+          - [SEVERITY high|medium] <file>:<line or area> — <what is wrong>. Fix: <concrete fix>
+          If CLEAN, one line after VERDICT: No substantive concerns.
+          {"NOTE: the diff was truncated; review only what is visible." if truncated else ""}
+
+          Repo-specific addendum:
+          {os.environ.get("PROMPT_OVERRIDE", "")}
+
+          DIFF:
+          {diff}"""
+
+          body = {
+              "model": os.environ["MODEL"],
+              "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.2,
+              "max_tokens": 2048,
+          }
+          req = urllib.request.Request(
+              "https://api.moonshot.ai/v1/chat/completions",
+              data=json.dumps(body).encode(),
+              headers={"Content-Type": "application/json",
+                       "Authorization": f"Bearer {os.environ['KIMI_API_KEY']}"})
+          try:
+              with urllib.request.urlopen(req, timeout=240) as r:
+                  d = json.load(r)
+          except urllib.error.HTTPError as e:
+              print(f"::error::Moonshot API {e.code}: {e.read()[:400]}", file=sys.stderr)
+              sys.exit(1)
+          text = d["choices"][0]["message"]["content"]
+          open("/tmp/review.md", "w").write(text)
+          print(f"usage: {d.get('usage')}")
+          PYEOF
+
+      - name: Post or update PR comment
+        if: steps.diff.outputs.empty == 'false'
+        run: |
+          MARKER='<!-- kimi-review -->'
+          {
+            echo "$MARKER"
+            echo "### Kimi review (\`$MODEL\`)"
+            echo ""
+            cat /tmp/review.md
+            echo ""
+            echo "---"
+            echo "_Diff vs \`${{ github.event.pull_request.base.ref }}\`$( [ "${{ steps.diff.outputs.truncated }}" = "true" ] && echo " (truncated to ${{ inputs.max_diff_kb }}KB)" ). Lockfiles excluded._"
+          } > /tmp/comment.md
+          PR=${{ github.event.pull_request.number }}
+          EXISTING=$(gh pr view "$PR" --json comments --jq ".comments[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$EXISTING" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/$EXISTING" -X PATCH -F body=@/tmp/comment.md > /dev/null
+            echo "updated existing comment $EXISTING"
+          else
+            gh pr comment "$PR" --body-file /tmp/comment.md
+            echo "posted new comment"
+          fi
