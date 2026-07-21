@@ -41,6 +41,9 @@ on:
         type: string
         required: false
         default: ''
+    secrets:
+      KIMI_API_KEY:
+        required: true
 
 permissions:
   contents: read
