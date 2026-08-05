@@ -82,7 +82,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: semgrep ci --config=p/default --config=p/security-audit --config=p/owasp-top-ten --sarif --output=semgrep.sarif || true
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -98,7 +98,7 @@ jobs:
       matrix:
         language: ["javascript-typescript"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
@@ -111,7 +111,7 @@ jobs:
     name: Vuln + IaC (trivy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
@@ -132,7 +132,7 @@ jobs:
     if: ${{ inputs.run-osv-scanner }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run osv-scanner
         uses: google/osv-scanner-action/osv-scanner-action@764c91816374ff2d8fc2095dab36eecd42d61638  # v1.9.2
         with:
@@ -156,7 +156,7 @@ jobs:
     name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install actionlint
         run: |
           curl -sL "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz" \
@@ -172,7 +172,7 @@ jobs:
     if: ${{ inputs.has-dockerfile }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install hadolint
         run: |
           curl -sL "https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64" \
@@ -197,7 +197,7 @@ jobs:
     if: ${{ inputs.lint-script != '' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Detect lockfile (npm cache only works when one exists)
         id: lockfile
         run: |
@@ -243,7 +243,7 @@ jobs:
     if: ${{ inputs.run-deadcode }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Detect lockfile (npm cache only works when one exists)
         id: lockfile
         run: |
