@@ -206,7 +206,7 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           # setup-node cache supports npm|yarn|pnpm only — never pass 'bun'.
@@ -252,7 +252,7 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           # setup-node cache supports npm|yarn|pnpm only — never pass 'bun'.
