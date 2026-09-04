@@ -10,6 +10,11 @@ name: Danger (reusable)
 # The dangerfile.ts MUST live at the consumer repo root. This workflow
 # only provides the runtime — rules are repo-specific by design (see
 # ADR 2026-05-10-multi-repo-review-tools-rollout).
+#
+# Note: lockfile guard should use danger.git.JSONDiffForFile() to check only
+# dependency-bearing keys (dependencies, devDependencies, optionalDependencies,
+# peerDependencies, overrides) rather than treating any package.json change as
+# a lockfile-requiring change. Script/version-only edits should not fail.
 
 on:
   workflow_call:
