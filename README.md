@@ -8,26 +8,39 @@ Reusable workflows + community health files shared across all `LucasSantana-Dev/
 
 Self-owned PR reviewer powered by [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action). Replaces Greptile (trial cap exhausted) and supplements CodeRabbit. Prompt is tuned to the merge rule in `~/.claude/standards/workflow.md`: only flags correctness, security, semver, prod-risk, and meaningful test gaps. Skips style nits.
 
+Reviews are **on demand only**: a `/claude-review` PR comment from an OWNER, MEMBER or COLLABORATOR triggers one run, capped at `max_reviews` (default 3) per PR. Each run posts a `N/3` marker comment, checks out the PR head, and fails if Claude posts no `Claude review:` summary (no silent green). Fork PRs are refused (the job has secrets).
+
 **Consumer usage:**
 
 ```yaml
-# .github/workflows/review-tools-caller.yml
-name: Review Tools
+# .github/workflows/claude-review.yml
+name: Claude Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, 'release/**']
-    paths-ignore: ['**.md', 'docs/**', 'CHANGELOG.md', 'package-lock.json']
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
 
 jobs:
-  claude-review:
-    uses: LucasSantana-Dev/.github/.github/workflows/claude-review.yml@v1
+  review:
+    name: AI Code Review
+    if: >-
+      ${{ github.event.issue.pull_request
+      && startsWith(github.event.comment.body, '/claude-review')
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) }}
+    uses: LucasSantana-Dev/.github/.github/workflows/claude-review.yml@<sha>
     secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-Optional inputs: `model`, `max_turns`, `timeout_minutes`, `prompt_override`.
+`issue_comment` workflows run from the default branch, so the caller only works once merged there.
+
+Optional inputs: `pr_number`, `max_reviews`, `model`, `max_turns`, `timeout_minutes`, `prompt_override`.
 
 ### `danger.yml`
 
@@ -53,10 +66,11 @@ Tag releases as `v1`, `v1.1`, etc. Consumers should pin to a tag (`@v1`), not `@
 
 | Secret | Used by | Where to get |
 |--------|---------|--------------|
-| `ANTHROPIC_API_KEY` | `claude-review.yml` | https://console.anthropic.com → API Keys |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude-review.yml` | `claude setup-token` (Claude subscription), run outside any agent session |
+| `ANTHROPIC_API_KEY` | `claude-review.yml` (alternative) | https://console.anthropic.com → API Keys (bills API credits) |
 | `GITHUB_TOKEN` | `danger.yml` | auto-provided by GitHub Actions |
 
-`ANTHROPIC_API_KEY` must be added to **each consumer repo's** Actions secrets (no org-level secret sync currently — see ADR for the audit cadence).
+The Claude credential must be added to **each consumer repo's** Actions secrets (no org-level secret sync currently — see ADR for the audit cadence).
 
 ## Related
 
