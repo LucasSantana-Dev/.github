@@ -75,10 +75,15 @@ jobs:
           fetch-depth: 0
 
       - name: Run Claude PR review
+        id: claude
         uses: anthropics/claude-code-action@af0559ee4f514d1ef21826982bed13f7edc3c35e # v1.0.178
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the job token instead of the Claude GitHub App OIDC exchange. The
+          # exchange "skips" (green job, no review) when the caller workflow is
+          # not yet on the default branch, which hides a review that never ran.
+          github_token: ${{ github.token }}
           # claude-code-action@v1 dropped the `model` / `max_turns` inputs and
           # renamed `direct_prompt` → `prompt`; model/turns now fold into
           # `claude_args` (passed through to the Claude CLI). The old inputs were
@@ -113,3 +118,9 @@ jobs:
             tree (if present) for repo-specific guidance.
 
             ${{ inputs.prompt_override }}
+
+      - name: Fail if the review was skipped
+        if: ${{ steps.claude.outputs.skipped_due_to_workflow_validation_mismatch == 'true' }}
+        run: |
+          echo "::error::claude-code-action skipped the review (workflow validation mismatch); no review was posted"
+          exit 1
