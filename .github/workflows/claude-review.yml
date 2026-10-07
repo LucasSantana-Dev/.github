@@ -7,7 +7,10 @@ name: Claude Code Review (reusable)
 #     review:
 #       uses: LucasSantana-Dev/.github/.github/workflows/claude-review.yml@v1
 #       secrets:
-#         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+#         CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+#
+# Pass CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`, bills the Claude
+# subscription) or ANTHROPIC_API_KEY (bills API credits). One is required.
 
 on:
   workflow_call:
@@ -37,7 +40,9 @@ on:
         default: ''
     secrets:
       ANTHROPIC_API_KEY:
-        required: true
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -54,15 +59,31 @@ jobs:
       group: claude-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
+      - name: Require a Claude credential
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_KEY" != true ] && [ "$HAS_OAUTH" != true ]; then
+            echo "::error::Pass CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to claude-review.yml"
+            exit 1
+          fi
+
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Run Claude PR review
+        id: claude
         uses: anthropics/claude-code-action@af0559ee4f514d1ef21826982bed13f7edc3c35e # v1.0.178
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the job token instead of the Claude GitHub App OIDC exchange. The
+          # exchange "skips" (green job, no review) when the caller workflow is
+          # not yet on the default branch, which hides a review that never ran.
+          github_token: ${{ github.token }}
           # claude-code-action@v1 dropped the `model` / `max_turns` inputs and
           # renamed `direct_prompt` → `prompt`; model/turns now fold into
           # `claude_args` (passed through to the Claude CLI). The old inputs were
@@ -97,3 +118,9 @@ jobs:
             tree (if present) for repo-specific guidance.
 
             ${{ inputs.prompt_override }}
+
+      - name: Fail if the review was skipped
+        if: ${{ steps.claude.outputs.skipped_due_to_workflow_validation_mismatch == 'true' }}
+        run: |
+          echo "::error::claude-code-action skipped the review (workflow validation mismatch); no review was posted"
+          exit 1
