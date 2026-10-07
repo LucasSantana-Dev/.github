@@ -71,6 +71,13 @@ jobs:
           cache: 'npm'
 
       - name: Install Danger
+        # npm install at the repo root installs the consumer's whole dependency
+        # tree, so every postinstall runs. youtube-dl-exec's postinstall fetches
+        # the yt-dlp binary through the GitHub API unauthenticated and fails on
+        # the shared runner IP's rate limit (Lucky#2109). Danger never runs
+        # yt-dlp, so skip that download.
+        env:
+          YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
         run: npm install --no-save danger@${{ inputs.danger_version }}
 
       - name: Run Danger
